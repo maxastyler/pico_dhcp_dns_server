@@ -1,0 +1,43 @@
+[package]
+name = "pico_dhcp_dns_server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = "1.14.1"
+cortex-m-rt = {version="0.7.3"}
+cyw43 = { version = "0.1.0", features = ["defmt", "firmware-logs"] }
+cyw43-pio = { version = "0.1.0", features = ["defmt", "overclock"] }
+defmt = "0.3.5"
+defmt-rtt = "0.4.0"
+embassy-embedded-hal = { version = "0.1.0", features = ["defmt"] }
+embassy-executor = {version = "0.5.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers", "nightly"]}
+embassy-futures = "0.1.1"
+embassy-net = { version = "0.4.0", features = ["defmt", "tcp", "udp", "proto-ipv4", "medium-ethernet"] }
+embassy-net-wiznet = { version = "0.1.0", features = ["defmt"] }
+embassy-rp = {version = "0.1.0", features=["time-driver", "unstable-pac", "critical-section-impl", "defmt"]}
+embassy-sync = { version = "0.5.0", features = ["defmt"] }
+embassy-time = { version = "0.3.0", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-usb = { version = "0.1.0", features = ["defmt"] }
+embassy-usb-logger = "0.1.0"
+embedded-io-async = { version = "0.6.1", features = ["defmt-03"] }
+fixed = "1.24.0"
+fixed-macro = "1.2.0"
+heapless = "0.8.0"
+log = "0.4.20"
+panic-probe = { version = "0.3.1", features = ["print-defmt"] }
+picoserve = "0.7.1"
+pio = "0.2.1"
+portable-atomic = { version = "1.6.0", features = ["critical-section"] }
+rand = { version = "0.8.5", default-features = false }
+smoltcp = {version = "0.11.0", default-features = false, features=["proto-dhcpv4"]}
+static_cell = {version = "2.0.0", features = ["nightly"]}
+
+[profile.release]
+lto = true
+opt-level = "s"
+incremental = false
+codegen-units = 1
+debug = true
