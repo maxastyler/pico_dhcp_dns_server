@@ -2,6 +2,7 @@ use cyw43::Control;
 use cyw43::NetDriver;
 use cyw43_pio::PioSpi;
 use embassy_executor::Spawner;
+use embassy_net::driver::Driver;
 use embassy_net::udp::PacketMetadata;
 use embassy_net::Stack;
 use embassy_rp::gpio::Level;
@@ -66,7 +67,6 @@ pub async fn set_up_network_stack(
     let state = make_static!(cyw43::State::new());
     let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
     spawner.must_spawn(wifi_task(runner));
-
     control.init(clm).await;
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
