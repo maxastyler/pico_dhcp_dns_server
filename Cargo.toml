@@ -32,7 +32,7 @@ picoserve = "0.7.1"
 pio = "0.2.1"
 portable-atomic = { version = "1.6.0", features = ["critical-section"] }
 rand = { version = "0.8.5", default-features = false }
-smoltcp = {version = "0.11.0", default-features = false, features=["proto-dhcpv4"]}
+smoltcp = {version = "0.11.0", default-features = false, features=["proto-dhcpv4", "proto-dns"]}
 static_cell = {version = "2.0.0", features = ["nightly"]}
 
 [profile.release]

@@ -1,6 +1,7 @@
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_rp::{clocks::RoscRng, pio::IrqFlags};
 use embassy_time::{Duration, Instant};
+use heapless::Vec;
 use rand::Rng;
 use smoltcp::wire::{
     DhcpMessageType, DhcpOption, DhcpPacket, DhcpRepr, EthernetAddress, IpEndpoint, Ipv4Address,
@@ -70,7 +71,7 @@ impl<
             client_identifier: None,
             server_identifier: Some(server_ip),
             parameter_request_list: None,
-            dns_servers: None,
+            dns_servers: Some(Vec::from_slice(&[server_ip]).unwrap()),
             max_size: None,
             lease_duration: lease_duration_seconds,
             renew_duration: None,
