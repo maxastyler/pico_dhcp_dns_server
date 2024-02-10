@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 
 mod dhcp_server;
+mod dns_packet;
 mod dns_server;
 mod network;
 
@@ -10,9 +11,7 @@ use defmt as _;
 use defmt_rtt as _;
 use dhcp_server::dhcp_server_task;
 use dns_server::dns_server_task;
-use embassy_rp::pio::Pio;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use smoltcp::wire::Ipv4Address;
 
 use panic_probe as _;
 
@@ -41,7 +40,7 @@ async fn main(spawner: embassy_executor::Spawner) {
         &spawner, p.PIN_23, p.PIN_25, p.PIO0, p.PIN_24, p.PIN_29, p.DMA_CH0,
     )
     .await;
-
-    spawner.must_spawn(dhcp_server_task(stack));
-    spawner.must_spawn(dns_server_task(stack));
+    let server_address = Ipv4Address::new(169, 254, 1, 1);
+    spawner.must_spawn(dhcp_server_task(stack, server_address));
+    spawner.must_spawn(dns_server_task(stack, server_address));
 }

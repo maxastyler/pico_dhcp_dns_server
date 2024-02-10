@@ -32,7 +32,7 @@ struct DhcpServer<
     const DATA_BUFFER_LEN: usize,
 > {
     server_address: Ipv4Address,
-    addresses: [DhcpAssignment; N_ADDRESSES],
+    assignments: [DhcpAssignment; N_ADDRESSES],
     socket: UdpSocket<'a>,
     data_buffer: [u8; DATA_BUFFER_LEN],
     lease_time: Duration,
@@ -222,13 +222,15 @@ impl<
             Some(Self {
                 lease_time,
                 server_address,
-                addresses: [(); N_ADDRESSES].map(|_| DhcpAssignment::Free),
+                assignments: [(); N_ADDRESSES].map(|_| DhcpAssignment::Free),
                 socket,
                 data_buffer: [0u8; DATA_BUFFER_LEN],
             })
         }
     }
-
+    
+    /// this function constructs the addresses that we'll use.
+    /// TODO: probably update this???
     fn construct_address(i: u8) -> Ipv4Address {
         Ipv4Address::new(169, 254, 1, i + 2)
     }
@@ -236,11 +238,12 @@ impl<
     /// Given a discover message from a client, go through the list of addresses.
     /// If there is already an offer out to the same identifier, update the transaction_id and
     /// send a new offer out
-    /// If there is already an assignment, send out an offer with the assignment's address. This
-    /// should make the client request.
+    /// If the offer is to a different identifier, and this is the first offer like that found,
+    /// make this offer be possibly overwritten
+    /// If there is already an assignment, send out an offer with the assignment's address and
+    /// new transaction ID
     /// If there is a free spot, create an offer in that spot and send out an offer.
-    /// If there are no free spots, go through the map again and find the first offer. Replace
-    /// offer with
+    /// If there are no free spots, use the first different ID offer found.
     async fn process_discover(
         &mut self,
         client_hardware_address: EthernetAddress,
@@ -249,7 +252,7 @@ impl<
     ) -> Result<()> {
         let id = client_identifier.unwrap_or(client_hardware_address);
         let mut first_offered_index = None;
-        for (index, assignment) in self.addresses.iter_mut().enumerate() {
+        for (index, assignment) in self.assignments.iter_mut().enumerate() {
             match assignment {
                 // if the lease has been offered to another index, then this can possibly be taken
                 // if there are no more spots
@@ -280,7 +283,7 @@ impl<
             }
         }
         if let Some(i) = first_offered_index {
-            *unsafe { self.addresses.get_unchecked_mut(i) } = DhcpAssignment::Offered {
+            *unsafe { self.assignments.get_unchecked_mut(i) } = DhcpAssignment::Offered {
                 identifier: id,
                 transaction_id,
             };
@@ -291,14 +294,6 @@ impl<
         }
     }
 
-    /// Given a discover message from a client, go through the list of addresses.
-    /// If there is already an offer out to the same identifier, update the transaction_id and
-    /// send a new offer out
-    /// If there is already an assignment, send out an offer with the assignment's address. This
-    /// should make the client request.
-    /// If there is a free spot, create an offer in that spot and send out an offer.
-    /// If there are no free spots, go through the map again and find the first offer. Replace
-    /// offer with
     async fn process_request(
         &mut self,
         client_ip: Ipv4Address,
@@ -308,7 +303,7 @@ impl<
     ) -> Result<()> {
         let id = client_identifier.unwrap_or(client_hardware_address);
         let mut assigned_index = None;
-        for (i, assignment) in self.addresses.iter_mut().enumerate() {
+        for (i, assignment) in self.assignments.iter_mut().enumerate() {
             match assignment {
                 // we have offered an assignment with this transaction_id to this identifier
                 DhcpAssignment::Offered {
@@ -353,7 +348,7 @@ impl<
         }
     }
 
-    async fn process_packet(&mut self, sender: IpEndpoint) -> Result<()> {
+    async fn process_packet(&mut self) -> Result<()> {
         let packet = DhcpPacket::new_checked(&self.data_buffer)?;
         let packet_repr = DhcpRepr::parse(&packet)?;
         match packet_repr.message_type {
@@ -363,7 +358,7 @@ impl<
                     packet_repr.client_identifier,
                     packet_repr.transaction_id,
                 )
-                .await;
+                .await
             }
             DhcpMessageType::Request => {
                 self.process_request(
@@ -372,18 +367,17 @@ impl<
                     packet_repr.client_identifier,
                     packet_repr.transaction_id,
                 )
-                .await;
+                .await
             }
-            _ => (),
-        };
-        Ok(())
+            _ => Ok(()),
+        }
     }
 
     async fn run(&mut self) -> ! {
         loop {
             match self.socket.recv_from(&mut self.data_buffer).await {
-                Ok((_, endpoint)) => {
-                    self.process_packet(endpoint).await.unwrap();
+                Ok((_, _)) => {
+                    self.process_packet().await.unwrap();
                 }
                 Err(_) => {
                     log::info!("Error receiving data")
@@ -394,7 +388,7 @@ impl<
 }
 
 #[embassy_executor::task]
-pub async fn dhcp_server_task(stack: &'static embassy_net::Stack<cyw43::NetDriver<'static>>) -> ! {
+pub async fn dhcp_server_task(stack: &'static embassy_net::Stack<cyw43::NetDriver<'static>>, assigned_address: Ipv4Address) -> ! {
     let mut rx_meta = [PacketMetadata::EMPTY; 1024];
     let mut rx_buffer = [0; 1024];
     let mut tx_meta = [PacketMetadata::EMPTY; 1024];
@@ -410,7 +404,7 @@ pub async fn dhcp_server_task(stack: &'static embassy_net::Stack<cyw43::NetDrive
 
     let mut server: DhcpServer<'_, 10, 67, 68, 2048> = DhcpServer::new(
         socket,
-        Ipv4Address::new(169, 254, 1, 1),
+	assigned_address,
         Duration::from_secs(60 * 60),
     )
     .unwrap();
