@@ -15,6 +15,7 @@ use dhcp_server::dhcp_server_task;
 use dns_server::dns_server_task;
 use embassy_net::{tcp::TcpSocket, Stack};
 use embassy_time::Timer;
+use embedded_io_async::Write;
 use smoltcp::wire::Ipv4Address;
 
 use panic_probe as _;
@@ -39,15 +40,16 @@ async fn logger_task(usb: embassy_rp::peripherals::USB) {
 async fn web_task(stack: &'static Stack<NetDriver<'static>>) {
     let mut rx_buffer = [0; 1024];
     let mut tx_buffer = [0; 1024];
-    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
     log::info!("Starting tcp stack");
     loop {
+        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
         if let Err(_) = socket.accept(80).await {
-            log::warn!("Couldn't accept thing")
+            log::warn!("Couldn't accept thing");
+            continue;
         }
         log::info!("GOT INCOMING CONNECTION");
-        socket
-            .write(
+        if let Err(e) = socket
+            .write_all(
                 "<!DOCTYPE html>
 <html>
     <head>
@@ -59,8 +61,10 @@ async fn web_task(stack: &'static Stack<NetDriver<'static>>) {
 </html>"
                     .as_bytes(),
             )
-            .await;
-        socket.close();
+            .await
+        {
+            log::info!("UH OOOH, couldn't connect, {:?}", e);
+        }
     }
 }
 
@@ -84,7 +88,7 @@ async fn main(spawner: embassy_executor::Spawner) {
     .await;
     let server_address = Ipv4Address::new(169, 254, 1, 1);
     spawner.must_spawn(dhcp_server_task(stack, server_address));
-    // spawner.must_spawn(dns_server_task(stack, server_address));
+    spawner.must_spawn(dns_server_task(stack, server_address));
     // start_server(&spawner, stack).await;
     spawner.must_spawn(web_task(stack));
     spawner.must_spawn(alive());
