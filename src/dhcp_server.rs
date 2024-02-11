@@ -1,3 +1,4 @@
+use defmt::unwrap;
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_rp::{clocks::RoscRng, pio::IrqFlags};
 use embassy_time::{Duration, Instant};
@@ -64,14 +65,14 @@ impl<
             your_ip: assigned_address,
             server_ip,
             router: None,
-            subnet_mask: None,
+            subnet_mask: Some(Ipv4Address::new(255, 255, 255, 0)),
             relay_agent_ip: Ipv4Address::new(0, 0, 0, 0),
             broadcast: false,
             requested_ip: None,
             client_identifier: None,
             server_identifier: Some(server_ip),
             parameter_request_list: None,
-            dns_servers: Some(Vec::from_slice(&[server_ip]).unwrap()),
+            dns_servers: Some(unwrap!(Vec::from_slice(&[server_ip]))),
             max_size: None,
             lease_duration: lease_duration_seconds,
             renew_duration: None,
@@ -228,7 +229,7 @@ impl<
             })
         }
     }
-    
+
     /// this function constructs the addresses that we'll use.
     /// TODO: probably update this???
     fn construct_address(i: u8) -> Ipv4Address {
@@ -377,7 +378,9 @@ impl<
         loop {
             match self.socket.recv_from(&mut self.data_buffer).await {
                 Ok((_, _)) => {
-                    self.process_packet().await.unwrap();
+                    if let Err(_) = self.process_packet().await {
+                        log::warn!("Error processing dhcp packet!!!");
+                    }
                 }
                 Err(_) => {
                     log::info!("Error receiving data")
@@ -388,7 +391,10 @@ impl<
 }
 
 #[embassy_executor::task]
-pub async fn dhcp_server_task(stack: &'static embassy_net::Stack<cyw43::NetDriver<'static>>, assigned_address: Ipv4Address) -> ! {
+pub async fn dhcp_server_task(
+    stack: &'static embassy_net::Stack<cyw43::NetDriver<'static>>,
+    assigned_address: Ipv4Address,
+) -> ! {
     let mut rx_meta = [PacketMetadata::EMPTY; 1024];
     let mut rx_buffer = [0; 1024];
     let mut tx_meta = [PacketMetadata::EMPTY; 1024];
@@ -402,12 +408,8 @@ pub async fn dhcp_server_task(stack: &'static embassy_net::Stack<cyw43::NetDrive
         &mut tx_buffer,
     );
 
-    let mut server: DhcpServer<'_, 10, 67, 68, 2048> = DhcpServer::new(
-        socket,
-	assigned_address,
-        Duration::from_secs(60 * 60),
-    )
-    .unwrap();
+    let mut server: DhcpServer<'_, 10, 67, 68, 2048> =
+        unwrap!(DhcpServer::new(socket, assigned_address, Duration::from_secs(60 * 60)));
 
     server.run().await
 }

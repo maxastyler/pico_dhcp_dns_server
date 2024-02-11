@@ -6,18 +6,23 @@ mod dhcp_server;
 mod dns_packet;
 mod dns_server;
 mod network;
+// mod web;
 
+use cyw43::NetDriver;
 use defmt as _;
 use defmt_rtt as _;
 use dhcp_server::dhcp_server_task;
 use dns_server::dns_server_task;
+use embassy_net::{tcp::TcpSocket, Stack};
+use embassy_time::Timer;
 use smoltcp::wire::Ipv4Address;
 
 use panic_probe as _;
+// use web::start_server;
 
 use crate::network::set_up_network_stack;
 
-const WEB_TASK_POOL_SIZE: usize = 3;
+const WEB_TASK_POOL_SIZE: usize = 10;
 
 embassy_rp::bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<embassy_rp::peripherals::PIO0>;
@@ -28,6 +33,43 @@ embassy_rp::bind_interrupts!(struct Irqs {
 async fn logger_task(usb: embassy_rp::peripherals::USB) {
     let driver = embassy_rp::usb::Driver::new(usb, Irqs);
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
+}
+
+#[embassy_executor::task]
+async fn web_task(stack: &'static Stack<NetDriver<'static>>) {
+    let mut rx_buffer = [0; 1024];
+    let mut tx_buffer = [0; 1024];
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    log::info!("Starting tcp stack");
+    loop {
+        if let Err(_) = socket.accept(80).await {
+            log::warn!("Couldn't accept thing")
+        }
+        log::info!("GOT INCOMING CONNECTION");
+        socket
+            .write(
+                "<!DOCTYPE html>
+<html>
+    <head>
+        <title>Example</title>
+    </head>
+    <body>
+        <p>This is an example of a simple HTML page with one paragraph.</p>
+    </body>
+</html>"
+                    .as_bytes(),
+            )
+            .await;
+        socket.close();
+    }
+}
+
+#[embassy_executor::task]
+async fn alive() {
+    loop {
+        Timer::after_secs(4).await;
+        log::info!("I'm alive");
+    }
 }
 
 #[embassy_executor::main]
@@ -42,5 +84,8 @@ async fn main(spawner: embassy_executor::Spawner) {
     .await;
     let server_address = Ipv4Address::new(169, 254, 1, 1);
     spawner.must_spawn(dhcp_server_task(stack, server_address));
-    spawner.must_spawn(dns_server_task(stack, server_address));
+    // spawner.must_spawn(dns_server_task(stack, server_address));
+    // start_server(&spawner, stack).await;
+    spawner.must_spawn(web_task(stack));
+    spawner.must_spawn(alive());
 }

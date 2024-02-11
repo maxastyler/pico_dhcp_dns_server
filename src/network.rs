@@ -16,6 +16,7 @@ use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::Pio;
 
 use embassy_rp::Peripherals;
+use heapless::Vec;
 use log::info;
 use rand::Rng;
 use static_cell::make_static;
@@ -71,13 +72,13 @@ pub async fn set_up_network_stack(
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
-
+    let my_ip = embassy_net::Ipv4Address::new(169, 254, 1, 1);
     let stack = &*make_static!(embassy_net::Stack::new(
         net_device,
         embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-            address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(169, 254, 1, 1), 16),
+            address: embassy_net::Ipv4Cidr::new(my_ip, 24),
             gateway: None,
-            dns_servers: Default::default(),
+            dns_servers: Vec::from_slice(&[]).unwrap(),
         }),
         make_static!(embassy_net::StackResources::<WEB_TASK_POOL_SIZE>::new()),
         embassy_rp::clocks::RoscRng.gen(),

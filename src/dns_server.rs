@@ -35,15 +35,17 @@ impl<'a, const SERVER_PORT: u16, const DATA_BUFFER_LEN: usize>
     async fn run(&mut self) -> ! {
         loop {
             let DNSServer {
-                socket,
                 data_buffer,
                 assigned_address,
+                ..
             } = self;
             match self.socket.recv_from(data_buffer).await {
                 Ok((_, endpoint)) => {
+                    log::info!("Got a dns packet");
                     if let Some(response_buffer) =
                         Self::process_packet(data_buffer, *assigned_address).await
                     {
+                        log::info!("Sending response buffer: {:?}", response_buffer);
                         self.socket
                             .send_to(response_buffer, endpoint)
                             .await
