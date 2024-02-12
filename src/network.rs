@@ -1,9 +1,12 @@
+use core::net::Ipv4Addr;
+
 use cyw43::Control;
 use cyw43::NetDriver;
 use cyw43_pio::PioSpi;
 use embassy_executor::Spawner;
 use embassy_net::driver::Driver;
 use embassy_net::udp::PacketMetadata;
+use embassy_net::ConfigV4;
 use embassy_net::Stack;
 use embassy_rp::gpio::Level;
 use embassy_rp::gpio::Output;
@@ -48,6 +51,8 @@ pub async fn set_up_network_stack(
     dio: PIN_24,
     clk: PIN_29,
     dma: DMA_CH0,
+    server_ip_address: embassy_net::Ipv4Address,
+    outside_ip_address: embassy_net::Ipv4Address,
 ) -> (Control<'static>, &'static Stack<NetDriver<'static>>) {
     let fw = include_bytes!("../firmware/43439A0.bin");
     let clm = include_bytes!("../firmware/43439A0_clm.bin");
@@ -72,19 +77,20 @@ pub async fn set_up_network_stack(
     control
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
-    let my_ip = embassy_net::Ipv4Address::new(169, 254, 1, 1);
     let stack = &*make_static!(embassy_net::Stack::new(
         net_device,
         embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-            address: embassy_net::Ipv4Cidr::new(my_ip, 24),
-            gateway: None,
-            dns_servers: Vec::from_slice(&[]).unwrap(),
+            address: embassy_net::Ipv4Cidr::new(server_ip_address, 24),
+            gateway: Some(server_ip_address),
+            dns_servers: Vec::from_slice(&[server_ip_address]).unwrap(),
         }),
         make_static!(embassy_net::StackResources::<WEB_TASK_POOL_SIZE>::new()),
         embassy_rp::clocks::RoscRng.gen(),
+        outside_ip_address
     ));
 
     spawner.must_spawn(net_task(stack));
+    stack.wait_config_up().await;
 
     info!("Starting access point...");
 

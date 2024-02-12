@@ -1,15 +1,18 @@
 use defmt::unwrap;
 use embassy_net::udp::{PacketMetadata, UdpSocket};
-use embassy_rp::{clocks::RoscRng, pio::IrqFlags};
 use embassy_time::{Duration, Instant};
 use heapless::Vec;
-use rand::Rng;
 use smoltcp::wire::{
     DhcpMessageType, DhcpOption, DhcpPacket, DhcpRepr, EthernetAddress, IpEndpoint, Ipv4Address,
     Result,
 };
 
-const OPTIONS: &[DhcpOption<'static>] = &[];
+pub const HOSTNAME: &str = "piconet.local";
+
+const OPTIONS: &[DhcpOption<'static>] = &[DhcpOption {
+    kind: 15,
+    data: HOSTNAME.as_bytes(),
+}];
 
 #[derive(Debug)]
 enum DhcpAssignment {
@@ -64,7 +67,7 @@ impl<
             client_ip,
             your_ip: assigned_address,
             server_ip,
-            router: None,
+            router: Some(server_ip),
             subnet_mask: Some(Ipv4Address::new(255, 255, 255, 0)),
             relay_agent_ip: Ipv4Address::new(0, 0, 0, 0),
             broadcast: false,
@@ -408,8 +411,11 @@ pub async fn dhcp_server_task(
         &mut tx_buffer,
     );
 
-    let mut server: DhcpServer<'_, 10, 67, 68, 2048> =
-        unwrap!(DhcpServer::new(socket, assigned_address, Duration::from_secs(60 * 60)));
+    let mut server: DhcpServer<'_, 10, 67, 68, 2048> = unwrap!(DhcpServer::new(
+        socket,
+        assigned_address,
+        Duration::from_secs(60 * 60)
+    ));
 
     server.run().await
 }

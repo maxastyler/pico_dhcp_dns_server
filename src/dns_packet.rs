@@ -1,8 +1,44 @@
-use core::mem;
+use core::{mem, str::from_utf8};
 use smoltcp::wire::Ipv4Address;
+
+use crate::dhcp_server::HOSTNAME;
 
 /// a DNS header is 12 bytes
 const DNS_HEADER_SIZE: usize = 12;
+
+struct AddressIter<'a> {
+    inner: &'a [u8],
+    pointer: usize,
+}
+
+impl<'a> AddressIter<'a> {
+    pub fn new(buffer: &'a [u8]) -> Self {
+        Self {
+            inner: buffer,
+            pointer: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for AddressIter<'a> {
+    type Item = Result<&'a str, ()>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(&size) = self.inner.get(self.pointer) {
+            if size == 0 {
+                return None;
+            } else if size > 63 {
+                return Some(Err(()));
+            } else if let Some(slice) = self
+                .inner
+                .get((self.pointer + 1)..(self.pointer + 1 + size as usize))
+            {
+                return Some(from_utf8(slice).map_err(|_| ()));
+            }
+        }
+        return Some(Err(()));
+    }
+}
 
 pub struct DnsHeader<'a> {
     buffer: &'a [u8],
@@ -42,14 +78,12 @@ impl<'a> DnsQuestion<'a> {
     /// Given a buffer, calculate the length of the question part of the packet in bytes
     pub fn length(mut buffer: &[u8]) -> Option<usize> {
         let mut length = 0;
-        while !buffer.is_empty() {
-            let skip = buffer[0] as usize;
-            if skip == 0 {
+        while let Some(&size) = buffer.get(0) {
+            if size == 0 {
                 return Some(length + 5);
-            } else {
-                length += 1 + skip;
-                buffer = &buffer[1 + skip..];
             }
+            length += 1 + size as usize;
+            buffer = buffer.get(1 + size as usize..)?;
         }
         None
     }
@@ -94,8 +128,10 @@ impl<'a> DnsPacket<'a> {
 
     pub fn transform_query_to_response<'buffer>(
         query_buffer: &'buffer mut [u8],
-        ip_address: Ipv4Address,
+        primary_ip_address: Ipv4Address,
+        secondary_ip_address: Ipv4Address,
     ) -> Option<&'buffer [u8]> {
+        // log::info!("\n\nDNS MESSAGE: GOT THE BUFFER: {:?}\n\n", query_buffer);
         let header = DnsHeader::new_checked(&query_buffer)?;
         if !header.is_query() {
             return None;
@@ -109,7 +145,8 @@ impl<'a> DnsPacket<'a> {
             return None;
         }
 
-        let question_length = DnsQuestion::length(&query_buffer)?;
+        let question_length = DnsQuestion::length(&query_buffer[DNS_HEADER_SIZE..])?;
+        log::info!("LENGTH WAS GOOD");
         let answer_start = DNS_HEADER_SIZE + question_length;
 
         let ip_address_start = answer_start + 2 + 2 + 2 + 4 + 2;
@@ -128,11 +165,18 @@ impl<'a> DnsPacket<'a> {
             0,
             4, // 4 bytes field
         ]);
+        // let address_matches = DnsQuestion::matches(&query_buffer[DNS_HEADER_SIZE..], HOSTNAME);
+        let address_matches = true;
         // copy the address
-        query_buffer[ip_address_start..ip_address_start + 4].copy_from_slice(&ip_address.0);
+
+        query_buffer[ip_address_start..ip_address_start + 4].copy_from_slice(if address_matches {
+            &primary_ip_address.0
+        } else {
+            &secondary_ip_address.0
+        });
 
         // this is a response, authoritative
-        query_buffer[2] = (1 << 7) | (1 << 2);
+        query_buffer[2] = 0b1000_0001;
         // authenticated
         query_buffer[3] = 1 << 7;
         // set answer count to 1
