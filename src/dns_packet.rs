@@ -21,7 +21,7 @@ impl<'a> AddressIter<'a> {
 }
 
 impl<'a> Iterator for AddressIter<'a> {
-    type Item = Result<&'a str, ()>;
+    type Item = Result<&'a [u8], ()>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(&size) = self.inner.get(self.pointer) {
@@ -33,7 +33,8 @@ impl<'a> Iterator for AddressIter<'a> {
                 .inner
                 .get((self.pointer + 1)..(self.pointer + 1 + size as usize))
             {
-                return Some(from_utf8(slice).map_err(|_| ()));
+                self.pointer += size as usize + 1;
+                return Some(Ok(slice));
             }
         }
         return Some(Err(()));
@@ -86,6 +87,22 @@ impl<'a> DnsQuestion<'a> {
             buffer = buffer.get(1 + size as usize..)?;
         }
         None
+    }
+
+    pub fn matches(buffer: &[u8], s: &str) -> bool {
+        let mut s_iter = s.split(".").map(|x| x.as_bytes());
+        let mut a_iter = AddressIter::new(buffer);
+        let mut matches = true;
+        while let Some(Ok(buf)) = a_iter.next() {
+            log::info!("Address buf: {:?}", buf);
+            if let Some(bufa) = s_iter.next() {
+                log::info!("string buf: {:?}", bufa);
+                if buf != bufa {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
@@ -161,17 +178,19 @@ impl<'a> DnsPacket<'a> {
             0,
             0,
             0,
-            60, // cache time is 60 s
+            1, // cache time is 60 s
             0,
             4, // 4 bytes field
         ]);
         // let address_matches = DnsQuestion::matches(&query_buffer[DNS_HEADER_SIZE..], HOSTNAME);
-        let address_matches = true;
+        let address_matches = DnsQuestion::matches(&query_buffer[DNS_HEADER_SIZE..], HOSTNAME);
         // copy the address
 
         query_buffer[ip_address_start..ip_address_start + 4].copy_from_slice(if address_matches {
+            log::info!("MATCHED");
             &primary_ip_address.0
         } else {
+            log::info!("DIDNT MATCH");
             &secondary_ip_address.0
         });
 

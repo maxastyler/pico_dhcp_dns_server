@@ -3,8 +3,8 @@ use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_time::{Duration, Instant};
 use heapless::Vec;
 use smoltcp::wire::{
-    DhcpMessageType, DhcpOption, DhcpPacket, DhcpRepr, EthernetAddress, IpEndpoint, Ipv4Address,
-    Result,
+    DhcpMessageType, DhcpOption, DhcpPacket, DhcpRepr, Error, EthernetAddress, IpEndpoint,
+    Ipv4Address, Result,
 };
 
 pub const HOSTNAME: &str = "piconet.local";
@@ -304,8 +304,41 @@ impl<
         client_hardware_address: EthernetAddress,
         client_identifier: Option<EthernetAddress>,
         transaction_id: u32,
+        requested_ip: Option<Ipv4Address>,
     ) -> Result<()> {
         let id = client_identifier.unwrap_or(client_hardware_address);
+        let new_lease_time = Instant::now()
+            .checked_add(self.lease_time)
+            .ok_or(smoltcp::wire::Error)?;
+        if let Some(address) = requested_ip {
+            let address_index = address.0[3].checked_sub(2).ok_or(Error)?;
+
+            match self
+                .assignments
+                .get_mut(address_index as usize)
+                .ok_or(Error)?
+            {
+                ref assignment @ DhcpAssignment::Offered { identifier, .. }
+                    if *identifier == id =>
+                {
+                    *assignment = DhcpAssignment::Assigned {
+                        transaction_id,
+                        identifier: id,
+                        lease_end_time: new_lease_time,
+                    };
+                }
+                DhcpAssignment::Assigned {
+                    transaction_id: tid,
+                    identifier,
+                    lease_end_time,
+                } if *identifier == id => {
+                    *tid = transaction_id;
+                    *lease_end_time = new_lease_time;
+                }
+                assignment @ DhcpAssignment::Free => {}
+                _ => {}
+            };
+        }
         let mut assigned_index = None;
         for (i, assignment) in self.assignments.iter_mut().enumerate() {
             match assignment {
@@ -316,9 +349,7 @@ impl<
                 } if (*a_identifier == id) && (*a_transaction_id == transaction_id) => {
                     *assignment = DhcpAssignment::Assigned {
                         identifier: id,
-                        lease_end_time: Instant::now()
-                            .checked_add(self.lease_time)
-                            .ok_or(smoltcp::wire::Error)?,
+                        lease_end_time: new_lease_time,
                         transaction_id,
                     };
                     assigned_index = Some(i);
@@ -334,9 +365,7 @@ impl<
                     && (*a_transaction_id == transaction_id)
                     && (Instant::now() < *lease_end_time) =>
                 {
-                    *lease_end_time = Instant::now()
-                        .checked_add(self.lease_time)
-                        .ok_or(smoltcp::wire::Error)?;
+                    *lease_end_time = new_lease_time;
                     assigned_index = Some(i);
                     break;
                 }
@@ -370,6 +399,7 @@ impl<
                     packet_repr.client_hardware_address,
                     packet_repr.client_identifier,
                     packet_repr.transaction_id,
+                    packet_repr.requested_ip,
                 )
                 .await
             }

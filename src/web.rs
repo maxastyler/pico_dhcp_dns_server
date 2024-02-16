@@ -3,8 +3,11 @@ use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_time::Duration;
 use picoserve::{
-    response,
-    routing::{get, PathRouter},
+    response::{
+        self, status::TEMPORARY_REDIRECT, IntoResponse, Json, Redirect, Response, StatusCode,
+    },
+    routing::{get, Layer, PathRouter},
+    ResponseSent, Router,
 };
 use static_cell::make_static;
 
@@ -73,19 +76,39 @@ async fn web_task(
     }
 }
 
+struct S;
+
+impl<State, PathParameters> Layer<State, PathParameters> for S {
+    type NextState = State;
+
+    type NextPathParameters = PathParameters;
+
+    async fn call_layer<
+        NextLayer: picoserve::routing::Next<Self::NextState, Self::NextPathParameters>,
+        W: response::ResponseWriter,
+    >(
+        &self,
+        next: NextLayer,
+        state: &State,
+        path_parameters: PathParameters,
+        request: picoserve::request::Request<'_>,
+        response_writer: W,
+    ) -> Result<ResponseSent, W::Error> {
+        if request
+            .headers()
+            .get("Host")
+            .map_or(false, |h| h == "169.254.1.1")
+        {
+            response_writer
+                .write_response(Json("hi").into_response())
+                .await
+        } else {
+            Redirect::to("169.254.1.1").write_to(response_writer).await
+        }
+    }
+}
 fn make_app() -> picoserve::Router<AppRouter> {
-    picoserve::Router::new().route(
-        "/",
-        get(move || async move {
-            response::File::html(
-                "<!DOCTYPE html>
-<html>
-<body>
-<h1>MATRIX CONTROL ROOM</h1>
-</body></html>",
-            )
-        }),
-    )
+    Router::new().layer(S)
 }
 
 pub async fn start_server(spawner: &Spawner, stack: &'static Stack<NetDriver<'static>>) {

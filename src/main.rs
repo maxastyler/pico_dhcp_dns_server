@@ -13,7 +13,7 @@ use cyw43::NetDriver;
 use defmt as _;
 use defmt_rtt as _;
 use dhcp_server::dhcp_server_task;
-use dns_server::dns_server_task;
+use dns_server::{dns_server_task, mdns_server_task};
 use embassy_net::{tcp::TcpSocket, Stack};
 use embassy_time::Timer;
 use embedded_io_async::Write;
@@ -68,6 +68,7 @@ async fn main(spawner: embassy_executor::Spawner) {
 
     spawner.must_spawn(dhcp_server_task(stack, server_address));
     spawner.must_spawn(dns_server_task(stack, server_address, outside_address));
+    spawner.must_spawn(mdns_server_task(stack, server_address, outside_address));    
     start_server(&spawner, stack).await;
     spawner.must_spawn(alive());
 }
