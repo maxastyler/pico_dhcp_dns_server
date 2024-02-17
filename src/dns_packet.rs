@@ -92,11 +92,10 @@ impl<'a> DnsQuestion<'a> {
     pub fn matches(buffer: &[u8], s: &str) -> bool {
         let mut s_iter = s.split(".").map(|x| x.as_bytes());
         let mut a_iter = AddressIter::new(buffer);
-        let mut matches = true;
         while let Some(Ok(buf)) = a_iter.next() {
-            log::info!("Address buf: {:?}", buf);
+            // log::info!("Address buf: {:?}", buf);
             if let Some(bufa) = s_iter.next() {
-                log::info!("string buf: {:?}", bufa);
+                // log::info!("string buf: {:?}", bufa);
                 if buf != bufa {
                     return false;
                 }
@@ -183,7 +182,8 @@ impl<'a> DnsPacket<'a> {
             4, // 4 bytes field
         ]);
         // let address_matches = DnsQuestion::matches(&query_buffer[DNS_HEADER_SIZE..], HOSTNAME);
-        let address_matches = DnsQuestion::matches(&query_buffer[DNS_HEADER_SIZE..], HOSTNAME);
+        let address_matches =
+            DnsQuestion::matches(&query_buffer[DNS_HEADER_SIZE..], "picohttp");
         // copy the address
 
         query_buffer[ip_address_start..ip_address_start + 4].copy_from_slice(if address_matches {

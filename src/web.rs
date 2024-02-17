@@ -7,7 +7,7 @@ use picoserve::{
         self, status::TEMPORARY_REDIRECT, IntoResponse, Json, Redirect, Response, StatusCode,
     },
     routing::{get, Layer, PathRouter},
-    ResponseSent, Router,
+    KeepAlive, ResponseSent, Router,
 };
 use static_cell::make_static;
 
@@ -50,8 +50,9 @@ async fn web_task(
         }
 
         log::info!(
-            "{id}: Received connection from {:?}",
-            socket.remote_endpoint()
+            "{id}: Received connection from {:?}\nTo endpoint: {:?}",
+            socket.remote_endpoint(),
+            socket.local_endpoint()
         );
 
         let (socket_rx, socket_tx) = socket.split();
@@ -97,13 +98,23 @@ impl<State, PathParameters> Layer<State, PathParameters> for S {
         if request
             .headers()
             .get("Host")
-            .map_or(false, |h| h == "169.254.1.1")
+            .and_then(|h| h.split_once(".").map(|(prefix, _)| prefix == "picohttp"))
+            .unwrap_or(false)
         {
             response_writer
                 .write_response(Json("hi").into_response())
                 .await
         } else {
-            Redirect::to("169.254.1.1").write_to(response_writer).await
+            let location = "http://picohttp.piconet.local";
+
+            (
+                StatusCode::new(302),
+                ("Location", location),
+                ("Connection", KeepAlive::Close),
+                format_args!("{}\n", location),
+            )
+                .write_to(response_writer)
+                .await
         }
     }
 }

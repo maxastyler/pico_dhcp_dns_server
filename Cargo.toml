@@ -15,7 +15,7 @@ defmt-rtt = "0.4.0"
 embassy-embedded-hal = { version = "0.1.0", features = ["defmt"], path = "../embassy/embassy-embedded-hal" }
 embassy-executor = {version = "0.5.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers", "nightly"], path="../embassy/embassy-executor"}
 embassy-futures = {version = "0.1.1", path="../embassy/embassy-futures"}
-embassy-net = { version = "0.4.0", features = ["defmt", "tcp", "udp", "proto-ipv4", "medium-ethernet", "dns"], path = "../embassy/embassy-net"}
+embassy-net = { version = "0.4.0", features = ["defmt", "tcp", "udp", "proto-ipv4", "medium-ethernet"], path = "../embassy/embassy-net"}
 embassy-net-wiznet = { version = "0.1.0", features = ["defmt"], path="../embassy/embassy-net-wiznet" }
 embassy-rp = {version = "0.1.0", features=["time-driver", "unstable-pac", "critical-section-impl", "defmt"], path="../embassy/embassy-rp"}
 embassy-sync = { version = "0.5.0", features = ["defmt"] ,path="../embassy/embassy-sync"}

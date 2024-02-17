@@ -1,5 +1,5 @@
 use embassy_net::udp::{PacketMetadata, UdpSocket};
-use smoltcp::wire::{DnsRepr, IpEndpoint, Ipv4Address};
+use smoltcp::wire::{IpEndpoint, Ipv4Address};
 
 use crate::dns_packet::{DnsHeader, DnsPacket};
 
@@ -88,31 +88,6 @@ pub async fn dns_server_task(
     );
 
     let mut server: DNSServer<'_, 53, 2048> =
-        DNSServer::new(socket, primary_address, secondary_address).unwrap();
-    log::info!("RUNNING DNS SERVER");
-    server.run().await
-}
-
-#[embassy_executor::task]
-pub async fn mdns_server_task(
-    stack: &'static embassy_net::Stack<cyw43::NetDriver<'static>>,
-    primary_address: Ipv4Address,
-    secondary_address: Ipv4Address,
-) -> ! {
-    let mut rx_meta = [PacketMetadata::EMPTY; 1024];
-    let mut rx_buffer = [0; 1024];
-    let mut tx_meta = [PacketMetadata::EMPTY; 1024];
-    let mut tx_buffer = [0; 1024];
-
-    let socket = embassy_net::udp::UdpSocket::new(
-        stack,
-        &mut rx_meta,
-        &mut rx_buffer,
-        &mut tx_meta,
-        &mut tx_buffer,
-    );
-
-    let mut server: DNSServer<'_, 5353, 2048> =
         DNSServer::new(socket, primary_address, secondary_address).unwrap();
     log::info!("RUNNING DNS SERVER");
     server.run().await
